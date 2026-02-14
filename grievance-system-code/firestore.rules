@@ -1,0 +1,116 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function to get user role
+    function getUserRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+    
+    // Helper function to check if user is admin
+    function isAdmin() {
+      return isAuthenticated() && getUserRole() == 'admin';
+    }
+    
+    // Helper function to check if user is authority
+    function isAuthority() {
+      return isAuthenticated() && getUserRole() == 'authority';
+    }
+    
+    // Helper function to check if user is student
+    function isStudent() {
+      return isAuthenticated() && getUserRole() == 'student';
+    }
+
+    // Users collection
+    match /users/{userId} {
+      // Users can read their own data
+      allow read: if isAuthenticated() && request.auth.uid == userId;
+      // Admins can read all users
+      allow read: if isAdmin();
+      // Users can create their own profile
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      // Users can update their own profile (except role)
+      allow update: if isAuthenticated() && request.auth.uid == userId && 
+                     (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']));
+      // Only admins can update roles
+      allow update: if isAdmin();
+    }
+
+    // Grievances collection
+    match /grievances/{grievanceId} {
+      // Students can read their own grievances
+      allow read: if isAuthenticated() && (
+        resource.data.studentId == request.auth.uid ||
+        resource.data.anonymous == false && resource.data.studentId == request.auth.uid
+      );
+      
+      // Students can read anonymous grievances if they created them
+      allow read: if isAuthenticated() && 
+                     resource.data.anonymous == true && 
+                     resource.data.studentId == request.auth.uid;
+      
+      // Authorities can read assigned grievances
+      allow read: if isAuthority() && resource.data.assignedTo == request.auth.uid;
+      
+      // Admins can read all grievances
+      allow read: if isAdmin();
+      
+      // Students can create grievances
+      allow create: if isAuthenticated() && (
+        request.resource.data.studentId == request.auth.uid ||
+        request.resource.data.studentId == null // Anonymous
+      );
+      
+      // Authorities can update assigned grievances
+      allow update: if isAuthority() && resource.data.assignedTo == request.auth.uid;
+      
+      // Admins can update any grievance
+      allow update: if isAdmin();
+      
+      // Only admins can delete
+      allow delete: if isAdmin();
+
+      // Messages subcollection
+      match /messages/{messageId} {
+        // Students can read/write messages for their grievances
+        allow read, write: if isAuthenticated() && 
+          get(/databases/$(database)/documents/grievances/$(grievanceId)).data.studentId == request.auth.uid;
+        
+        // Authorities can read/write messages for assigned grievances
+        allow read, write: if isAuthority() && 
+          get(/databases/$(database)/documents/grievances/$(grievanceId)).data.assignedTo == request.auth.uid;
+        
+        // Admins can read/write all messages
+        allow read, write: if isAdmin();
+      }
+
+      // Attachments subcollection
+      match /attachments/{attachmentId} {
+        // Same rules as messages
+        allow read, write: if isAuthenticated() && 
+          get(/databases/$(database)/documents/grievances/$(grievanceId)).data.studentId == request.auth.uid;
+        
+        allow read, write: if isAuthority() && 
+          get(/databases/$(database)/documents/grievances/$(grievanceId)).data.assignedTo == request.auth.uid;
+        
+        allow read, write: if isAdmin();
+      }
+    }
+
+    // Notifications collection
+    match /notifications/{notificationId} {
+      // Users can read their own notifications
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      // System can create notifications
+      allow create: if true; // Cloud Functions will create these
+      // Users can update their own notifications (mark as read)
+      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+  }
+}
+

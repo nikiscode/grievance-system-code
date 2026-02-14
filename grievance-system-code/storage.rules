@@ -1,0 +1,23 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Grievance attachments
+    match /grievances/{grievanceId}/{allPaths=**} {
+      // Students can upload/read their own grievance attachments
+      allow read, write: if request.auth != null && 
+        firestore.get(/databases/(default)/documents/grievances/$(grievanceId)).data.studentId == request.auth.uid;
+      
+      // Authorities can read/write attachments for assigned grievances
+      allow read, write: if request.auth != null && 
+        firestore.get(/databases/(default)/documents/grievances/$(grievanceId)).data.assignedTo == request.auth.uid;
+      
+      // Admins can read/write all attachments
+      allow read, write: if request.auth != null && 
+        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      
+      // File size limit (10MB)
+      allow write: if request.resource.size < 10 * 1024 * 1024;
+    }
+  }
+}
+
