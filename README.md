@@ -1,4 +1,4 @@
-//Grievance System
+##Grievance System
 # AI-Powered Student Grievance Redressal System
 
 A fully functional, end-to-end grievance management system built with Next.js, Firebase, and Google AI technologies (Gemini & Vertex AI).
